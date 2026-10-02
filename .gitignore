@@ -29,6 +29,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# Vercel CLI link state - machine specific, not part of the project
+.vercel
+
 # Stray local scratch files. "import os.py" is a leftover Mailgun sandbox
 # test script that has a real API key hardcoded as a fallback default - it must
 # never reach a remote. Rotate that key if this repo is ever pushed anywhere.
