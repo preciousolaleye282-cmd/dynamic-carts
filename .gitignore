@@ -1,0 +1,35 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# local env files
+.env
+.env.local
+.env.*.local
+
+# typescript
+*.tsbuildinfo
+
+# Stray local scratch files. "import os.py" is a leftover Mailgun sandbox
+# test script that has a real API key hardcoded as a fallback default - it must
+# never reach a remote. Rotate that key if this repo is ever pushed anywhere.
+import os.py

@@ -1,0 +1,35 @@
+{
+  "name": "dynamic-carts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dynamic Carts - shop storefront, checkout, Google auth, Postgres persistence and Mailgun order confirmations.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:schema": "node scripts/apply-schema.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "db:setup": "node scripts/apply-schema.mjs && node scripts/seed.mjs",
+    "db:clear-orders": "node scripts/clear-orders.mjs",
+    "db:check": "node scripts/check-db.mjs",
+    "images": "node scripts/fetch-images.mjs"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "pg": "^8.13.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.9.3"
+  }
+}

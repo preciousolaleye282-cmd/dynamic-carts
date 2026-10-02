@@ -1,0 +1,291 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   Dynamic Carts - design tokens
+
+   Tailwind v4 reads this block and generates the matching utilities
+   (bg-brand-600, text-ink-500, rounded-card, ...). The sketch is built from
+   circles and soft rounded rectangles, so the radius scale is deliberately
+   generous and the surfaces are warm rather than clinical grey.
+   =========================================================================== */
+
+@theme {
+  /* Brand - a hot orange, taken from the "SALE" / "ADD TO CART" accent in
+     the reference template. It is the only saturated colour in the UI. */
+  --color-brand-50: #fff2ea;
+  --color-brand-100: #ffe1d1;
+  --color-brand-200: #ffc5a6;
+  --color-brand-300: #ffa277;
+  --color-brand-400: #ff7d45;
+  --color-brand-500: #ff5c1f;
+  --color-brand-600: #e04a12;
+  --color-brand-700: #bb3a0d;
+  --color-brand-800: #8f2d0a;
+  --color-brand-900: #6b2208;
+
+  /* Ink - the dark scale. Note the inversion: ink-50 is the darkest surface
+     (the page) and ink-900 is the lightest (headings), which is how the
+     components already use them, so the whole app flips with no edits. */
+  --color-ink-50: #0a0a0b;
+  --color-ink-100: #131317;
+  --color-ink-200: #232329;
+  --color-ink-300: #32323a;
+  --color-ink-400: #55555f;
+  --color-ink-500: #78787f;
+  --color-ink-600: #9b9ba3;
+  --color-ink-700: #c2c2ca;
+  --color-ink-800: #dedee4;
+  --color-ink-900: #f7f7f9;
+
+  /* Accent colours, one per category. Keyed by `accent` in the catalogue.
+     The -soft tones are dark enough to sit behind -ink text on the dark UI. */
+  --color-rose-soft: #3a1620;
+  --color-rose-ink: #ff93ab;
+  --color-sky-soft: #12283f;
+  --color-sky-ink: #7cc0ff;
+  --color-amber-soft: #3a2a10;
+  --color-amber-ink: #ffc061;
+  --color-violet-soft: #241a3d;
+  --color-violet-ink: #b79bff;
+  --color-emerald-soft: #10301f;
+  --color-emerald-ink: #5fd39a;
+
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-ink-50);
+    color: var(--color-ink-800);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A single visible focus treatment everywhere, for keyboard users. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  /* The pill that sits in the header, per the sketch. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-ink-200);
+    background-color: var(--color-ink-100);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease,
+      border-color 150ms ease,
+      transform 100ms ease;
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background-color: var(--color-brand-600);
+    color: #fff;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-brand-700);
+  }
+
+  .btn-ghost {
+    background-color: var(--color-ink-100);
+    color: var(--color-ink-900);
+    border: 1px solid var(--color-ink-300);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--color-ink-400);
+    background-color: var(--color-ink-200);
+  }
+
+  /* The action buttons that surface on hover (quick add, wishlist).
+     They sit on dark cards, so they read as a light chip: BLACK text at rest,
+     flipping to the orange brand fill on hover. Text colour is explicit rather
+     than inherited so it can never be lost against a dark background. */
+  .btn-invert {
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+  }
+
+  .btn-invert:hover:not(:disabled) {
+    background-color: var(--color-brand-600);
+    color: #ffffff;
+    border-color: var(--color-brand-600);
+  }
+
+  .btn-invert:disabled {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .card-surface {
+    background-color: var(--color-ink-100);
+    border: 1px solid var(--color-ink-200);
+    border-radius: var(--radius-card);
+  }
+}
+
+/* The category circle, e.g. "W" for Women. */
+@layer utilities {
+  .cat-rose {
+    background-color: var(--color-rose-soft);
+    color: var(--color-rose-ink);
+  }
+  .cat-sky {
+    background-color: var(--color-sky-soft);
+    color: var(--color-sky-ink);
+  }
+  .cat-amber {
+    background-color: var(--color-amber-soft);
+    color: var(--color-amber-ink);
+  }
+  .cat-violet {
+    background-color: var(--color-violet-soft);
+    color: var(--color-violet-ink);
+  }
+  .cat-emerald {
+    background-color: var(--color-emerald-soft);
+    color: var(--color-emerald-ink);
+  }
+  .cat-brand {
+    background-color: var(--color-brand-100);
+    color: var(--color-brand-700);
+  }
+}
+
+/* ===========================================================================
+   The brand mark: a cart that appears to roll.
+
+   Two layers of motion - a gentle tilt on the body and a rotation on the
+   wheels - plus trailing "speed" ticks. Everything is transform/opacity only,
+   so it stays on the compositor, and the reduced-motion block at the bottom of
+   this file switches all of it off.
+   =========================================================================== */
+
+.logo-cart__tilt {
+  transform-box: fill-box;
+  transform-origin: 10% 90%;
+  animation: logo-tilt 2.4s ease-in-out infinite;
+}
+
+.logo-cart__wheels circle {
+  /* The wheels carry an SVG <animateTransform>; this only handles the
+     parent group so the whole pair can bob with the body. */
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.logo-cart__wheels {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: logo-bob 2.4s ease-in-out infinite;
+}
+
+.logo-cart__speed path {
+  opacity: 0;
+  animation: logo-speed 2.4s ease-in-out infinite;
+}
+
+.logo-cart__speed path:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+@keyframes logo-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-3.5deg);
+  }
+  65% {
+    transform: rotate(2deg);
+  }
+}
+
+@keyframes logo-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(0.9px);
+  }
+}
+
+@keyframes logo-speed {
+  0%,
+  20% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  35% {
+    opacity: 0.55;
+  }
+  60% {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Hovering the mark everywhere it appears makes it surge forward. */
+.group:hover .logo-cart__tilt,
+a:hover .logo-cart__tilt {
+  animation-duration: 0.9s;
+}
+
+/* Respect a reduced-motion preference across every transition and animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* ...and park the logo in a clean, static pose. */
+  .logo-cart__tilt,
+  .logo-cart__wheels,
+  .logo-cart__speed path {
+    animation: none !important;
+    opacity: 1;
+  }
+}
