@@ -57,9 +57,49 @@
     "Helvetica Neue", Arial, sans-serif;
 }
 
+/* ===========================================================================
+   PWA / installability
+
+   Three things make this installable and behave like an app on a phone:
+
+   1. `viewport-fit=cover` - lets the layout extend under the notch and home
+      indicator, which the safe-area padding below then respects. Without the
+      `viewport-fit` token this is a no-op.
+   2. `apple-mobile-web-app-*` - iOS Safari does NOT read the web app manifest
+      for these; it reads meta tags, so they must be declared in layout.tsx.
+   3. A `theme-color` that matches the manifest, so the browser chrome blends
+      into the app instead of showing a white strip above a dark UI.
+
+   On Android Chrome these are ignored in favour of the manifest, which is why
+   both places exist rather than either alone.
+   ========================================================================= */
+
 @layer base {
+  /* Painted app icons / splash, so the white flash on cold start is dark. */
   html {
-    -webkit-text-size-adjust: 100%;
+    background-color: var(--color-ink-50);
+    color-scheme: dark;
+  }
+
+  /* Standalone mode only: pad the header and footer clear of the notch, the
+     rounded corners and the home indicator. In a browser tab the insets are 0,
+     so this costs nothing. */
+  @supports (padding: max(0px)) {
+    .app-safe-top {
+      padding-top: env(safe-area-inset-top, 0px);
+    }
+
+    .app-safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .app-safe-left {
+      padding-left: env(safe-area-inset-left, 0px);
+    }
+
+    .app-safe-right {
+      padding-right: env(safe-area-inset-right, 0px);
+    }
   }
 
   body {
@@ -67,6 +107,27 @@
     color: var(--color-ink-800);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    /* Stop iOS Safari inflating text sideways when the phone is rotated. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* iOS zooms any input whose computed font-size is under 16px on focus.
+       These two stop the layout jumping when a field takes focus. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Kill the grey flash iOS puts on tapped elements. */
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Honour the "reduce motion" system setting for the smooth-scroll we opt into
+     for the back/forward navigation. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
 
   /* A single visible focus treatment everywhere, for keyboard users. */
@@ -155,6 +216,48 @@
     background-color: var(--color-ink-100);
     border: 1px solid var(--color-ink-200);
     border-radius: var(--radius-card);
+  }
+
+  /* =========================================================================
+     Mobile accessibility
+
+     Touch targets: WCAG 2.2 "Target Size (Minimum)" wants 24x24 CSS px, but
+     44x44 is the figure that actually feels comfortable on a phone and is what
+     Apple's and Google's own HIGs recommend. An icon button rendered at
+     `h-10 w-10` is 40px - close, but the ring area around it is not tappable,
+     so small controls are widened with a pseudo-element rather than by
+     inflating the visual box and breaking the layout.
+
+     The pseudo-element is transparent and not `display:none`, so it stays
+     tappable and still gives screen readers the original, correctly-labelled
+     control.
+     ========================================================================= */
+
+  .tap {
+    position: relative;
+  }
+
+  /* Expand the hit area to 44x44 without changing what is drawn. */
+  .tap::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+
+  /* Inputs: iOS Safari zooms in on focus when the computed size is < 16px,
+     which then leaves the page horizontally scrolled. 16px is the fix.
+     (The focus ring itself lives in the base layer.) */
+  @supports (-webkit-touch-callout: none) {
+    input,
+    select,
+    textarea,
+    button {
+      font-size: max(16px, 1em);
+    }
   }
 }
 

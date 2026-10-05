@@ -29,6 +29,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# generated at build time - `npm run build` recreates it from scripts/sw-source.js
+/public/sw.js
+
 # Vercel CLI link state - machine specific, not part of the project
 .vercel
 

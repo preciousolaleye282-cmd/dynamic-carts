@@ -54,7 +54,8 @@
       "review_count": 412,
       "stock": 24,
       "is_featured": true,
-      "sort_order": 10
+      "sort_order": 10,
+      "image_url": "/products/aurora-wool-overcoat.jpg"
     },
     {
       "slug": "sienna-linen-blazer",
@@ -68,7 +69,8 @@
       "review_count": 236,
       "stock": 41,
       "is_featured": true,
-      "sort_order": 20
+      "sort_order": 20,
+      "image_url": "/products/sienna-linen-blazer.jpg"
     },
     {
       "slug": "vela-silk-wrap-dress",
@@ -82,7 +84,8 @@
       "review_count": 178,
       "stock": 12,
       "is_featured": true,
-      "sort_order": 30
+      "sort_order": 30,
+      "image_url": "/products/vela-silk-wrap-dress.jpg"
     },
     {
       "slug": "northwind-cable-knit",
@@ -96,7 +99,8 @@
       "review_count": 519,
       "stock": 63,
       "is_featured": true,
-      "sort_order": 40
+      "sort_order": 40,
+      "image_url": "/products/northwind-cable-knit.jpg"
     },
     {
       "slug": "atlas-oxford-shirt",
@@ -110,7 +114,8 @@
       "review_count": 874,
       "stock": 88,
       "is_featured": true,
-      "sort_order": 50
+      "sort_order": 50,
+      "image_url": "/products/atlas-oxford-shirt.jpg"
     },
     {
       "slug": "harbor-selvedge-denim",
@@ -124,7 +129,8 @@
       "review_count": 302,
       "stock": 19,
       "is_featured": true,
-      "sort_order": 60
+      "sort_order": 60,
+      "image_url": "/products/harbor-selvedge-denim.jpg"
     },
     {
       "slug": "pico-rain-slicker",
@@ -138,7 +144,8 @@
       "review_count": 141,
       "stock": 72,
       "is_featured": true,
-      "sort_order": 70
+      "sort_order": 70,
+      "image_url": "/products/pico-rain-slicker.jpg"
     },
     {
       "slug": "wren-knit-cardigan",
@@ -152,7 +159,8 @@
       "review_count": 96,
       "stock": 55,
       "is_featured": true,
-      "sort_order": 80
+      "sort_order": 80,
+      "image_url": "/products/wren-knit-cardigan.jpg"
     },
     {
       "slug": "meridian-leather-tote",
@@ -166,7 +174,8 @@
       "review_count": 267,
       "stock": 30,
       "is_featured": true,
-      "sort_order": 90
+      "sort_order": 90,
+      "image_url": "/products/meridian-leather-tote.jpg"
     },
     {
       "slug": "solstice-shades",
@@ -180,7 +189,8 @@
       "review_count": 611,
       "stock": 97,
       "is_featured": true,
-      "sort_order": 100
+      "sort_order": 100,
+      "image_url": "/products/solstice-shades.jpg"
     },
     {
       "slug": "cascade-trail-runner",
@@ -194,7 +204,8 @@
       "review_count": 388,
       "stock": 46,
       "is_featured": true,
-      "sort_order": 110
+      "sort_order": 110,
+      "image_url": "/products/cascade-trail-runner.jpg"
     },
     {
       "slug": "dockside-deck-sneaker",
@@ -208,7 +219,8 @@
       "review_count": 733,
       "stock": 120,
       "is_featured": true,
-      "sort_order": 120
+      "sort_order": 120,
+      "image_url": "/products/dockside-deck-sneaker.jpg"
     }
   ]
 }

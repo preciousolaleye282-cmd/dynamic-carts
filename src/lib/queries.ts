@@ -4,6 +4,8 @@ import {
   demoProducts,
   demoProductById,
   demoProductBySlug,
+  colourwaysFor,
+  sizesFor,
 } from "./demo-catalogue";
 import type { Category, Product } from "./types";
 
@@ -120,6 +122,14 @@ export type ProductFilter = {
   limit?: number;
   offset?: number;
   sort?: ProductSort;
+  /** Only items carrying a markdown (what the flash sale applies to). */
+  discountedOnly?: boolean;
+  /** Restrict to products offered in at least one of these sizes. */
+  sizes?: string[];
+  /** Restrict to products offered in at least one of these colours. */
+  colours?: string[];
+  minPriceCents?: number | null;
+  maxPriceCents?: number | null;
 };
 
 const ORDER_BY: Record<ProductSort, string> = {
@@ -164,6 +174,11 @@ export async function getProducts(filter: ProductFilter = {}): Promise<Product[]
     limit = 60,
     offset = 0,
     sort = "featured",
+    discountedOnly = false,
+    sizes = [],
+    colours = [],
+    minPriceCents = null,
+    maxPriceCents = null,
   } = filter;
 
   if (!hasDatabase) {
@@ -177,6 +192,28 @@ export async function getProducts(filter: ProductFilter = {}): Promise<Product[]
         `${p.name} ${p.tagline ?? ""} ${p.description ?? ""}`
           .toLowerCase()
           .includes(needle),
+      );
+    }
+    if (discountedOnly) {
+      items = items.filter(
+        (p) => p.compareAtCents !== null && p.compareAtCents > p.priceCents,
+      );
+    }
+    if (minPriceCents !== null) {
+      items = items.filter((p) => p.priceCents >= minPriceCents);
+    }
+    if (maxPriceCents !== null) {
+      items = items.filter((p) => p.priceCents <= maxPriceCents);
+    }
+    // Size/colour filtering needs the derived variant shape in demo mode.
+    if (sizes.length > 0) {
+      items = items.filter((p) =>
+        sizesFor(p.slug, p.categorySlug).some((size) => sizes.includes(size)),
+      );
+    }
+    if (colours.length > 0) {
+      items = items.filter((p) =>
+        colourwaysFor(p.slug).some((colour) => colours.includes(colour.name)),
       );
     }
     items = sortDemoProducts(items, sort);
@@ -197,6 +234,35 @@ export async function getProducts(filter: ProductFilter = {}): Promise<Product[]
       to_tsvector('english', coalesce(p.name,'') || ' ' || coalesce(p.tagline,'') || ' ' || coalesce(p.description,''))
         @@ plainto_tsquery('english', $${params.length})
       OR p.name ILIKE '%' || $${params.length} || '%'
+    )`);
+  }
+  if (discountedOnly) {
+    // A markdown means compare_at is set and above the selling price.
+    where.push(`p.compare_at_cents IS NOT NULL AND p.compare_at_cents > p.price_cents`);
+  }
+  if (minPriceCents !== null) {
+    params.push(minPriceCents);
+    where.push(`p.price_cents >= $${params.length}`);
+  }
+  if (maxPriceCents !== null) {
+    params.push(maxPriceCents);
+    where.push(`p.price_cents <= $${params.length}`);
+  }
+  // An item matches when SOME variant satisfies the request, and when several
+  // sizes are asked for it must be able to satisfy all of them - otherwise
+  // ticking "S" and "M" would offer clothes that only come in one of the two.
+  if (sizes.length > 0) {
+    params.push(sizes);
+    where.push(`(
+      SELECT count(DISTINCT v.size) FROM product_variants v
+       WHERE v.product_id = p.id AND v.size = ANY($${params.length}::text[]) AND v.stock > 0
+    ) = ${sizes.length}`);
+  }
+  if (colours.length > 0) {
+    params.push(colours);
+    where.push(`EXISTS (
+      SELECT 1 FROM product_variants v
+       WHERE v.product_id = p.id AND v.colour = ANY($${params.length}::text[]) AND v.stock > 0
     )`);
   }
 
@@ -317,3 +383,155 @@ export async function getStorefrontStats(): Promise<StorefrontStats> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Live price / stock verification (backlog item 9)
+// ---------------------------------------------------------------------------
+
+/** One cart line as the browser believed it, compared against the server. */
+export type ClientCartLine = {
+  productId: string;
+  quantity: number;
+  /** The unit price the browser had when the cart was drawn. */
+  believedPriceCents: number;
+};
+
+export type PriceChange = {
+  productId: string;
+  slug: string;
+  name: string;
+  quantity: number;
+  believedPriceCents: number;
+  actualPriceCents: number;
+  availableStock: number;
+  /** "none" | "price" | "stock" | "removed" */
+  kind: "none" | "price" | "stock" | "removed";
+  message: string;
+};
+
+export type PriceCheck = {
+  /** True when nothing moved since the browser drew the cart. */
+  unchanged: boolean;
+  changes: PriceChange[];
+  /** The instant the server produced this answer, for the "just now" line. */
+  checkedAt: number;
+};
+
+/**
+ * Re-price a cart against the database and describe anything that moved.
+ *
+ * This is what backs the "Prices confirmed just now" line. It never mutates and
+ * never throws: the checkout page calls it on load, after the hold is taken, and
+ * again before the order is placed, so a shopper always sees the real number
+ * before they pay.
+ */
+export async function checkCartPrices(
+  lines: ClientCartLine[],
+  promotion: { priceCents: number } | null = null,
+): Promise<PriceCheck> {
+  const checkedAt = Date.now();
+  if (lines.length === 0) {
+    return { unchanged: true, changes: [], checkedAt };
+  }
+
+  const products = await getProductsByIds(lines.map((line) => line.productId));
+  const byId = new Map(products.map((product) => [product.id, product]));
+  const changes: PriceChange[] = [];
+
+  for (const line of lines) {
+    const product = byId.get(line.productId);
+    if (!product) {
+      changes.push({
+        productId: line.productId,
+        slug: "",
+        name: "An item in your cart",
+        quantity: line.quantity,
+        believedPriceCents: line.believedPriceCents,
+        actualPriceCents: 0,
+        availableStock: 0,
+        kind: "removed",
+        message: "This item is no longer available and was removed.",
+      });
+      continue;
+    }
+
+    const actualPriceCents = product.priceCents;
+
+    if (product.stock < line.quantity) {
+      changes.push({
+        productId: product.id,
+        slug: product.slug,
+        name: product.name,
+        quantity: line.quantity,
+        believedPriceCents: line.believedPriceCents,
+        actualPriceCents,
+        availableStock: product.stock,
+        kind: product.stock === 0 ? "removed" : "stock",
+        message:
+          product.stock === 0
+            ? `${product.name} has just sold out.`
+            : `Only ${product.stock} of ${product.name} left - reduce the quantity to continue.`,
+      });
+      continue;
+    }
+
+    if (actualPriceCents !== line.believedPriceCents) {
+      const rose = actualPriceCents > line.believedPriceCents;
+      changes.push({
+        productId: product.id,
+        slug: product.slug,
+        name: product.name,
+        quantity: line.quantity,
+        believedPriceCents: line.believedPriceCents,
+        actualPriceCents,
+        availableStock: product.stock,
+        kind: "price",
+        message: rose
+          ? `${product.name} now costs more than when you added it.`
+          : `${product.name} is now cheaper than when you added it.`,
+      });
+    }
+  }
+
+  void promotion; // Sale pricing is applied by the caller via salePriceFor().
+  return { unchanged: changes.length === 0, changes, checkedAt };
+}
+
+/**
+ * How many products matched a filter, without downloading them.
+ *
+ * The listing uses this to say "Showing 12 of 40".
+ */
+export async function countProducts(filter: ProductFilter = {}): Promise<number> {
+  const { categorySlug = null, search = null } = filter;
+
+  if (!hasDatabase) {
+    const all = await getProducts({ ...filter, limit: 1000, offset: 0 });
+    void search;
+    void categorySlug;
+    return all.length;
+  }
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (categorySlug) {
+    params.push(categorySlug);
+    where.push(`c.slug = $${params.length}`);
+  }
+  if (search && search.trim() !== "") {
+    params.push(search.trim());
+    where.push(`(
+      to_tsvector('english', coalesce(p.name,'') || ' ' || coalesce(p.tagline,'')) @@ plainto_tsquery('english', $${params.length})
+      OR p.name ILIKE '%' || $${params.length} || '%'
+    )`);
+  }
+
+  const row = await queryOne<{ total: number | string }>(
+    `SELECT count(*)::int AS total
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}`,
+    params,
+  );
+  const total = row?.total ?? 0;
+  return typeof total === "number" ? total : Number.parseInt(total, 10);
+}

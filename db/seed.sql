@@ -4,9 +4,10 @@
 --  Idempotent: safe to run more than once (upserts on the unique slugs).
 --  Run after db/schema.sql:   npm run db:seed
 --
---  image_url is intentionally NULL. When it is NULL the UI renders
---  /api/product-image/<slug>, which generates a deterministic branded SVG
---  card. Set image_url to any absolute/relative URL to override.
+--  Each product points at a real photograph downloaded by `npm run images`
+--  into /public/products. If image_url is ever NULL the UI falls back to
+--  /api/product-image/<slug>, which generates a deterministic branded SVG card.
+--  Re-run `npm run images && npm run db:seed` after swapping photography.
 -- ============================================================================
 
 INSERT INTO categories (slug, name, glyph, accent, blurb, sort_order) VALUES
@@ -23,9 +24,10 @@ ON CONFLICT (slug) DO UPDATE SET
   sort_order = EXCLUDED.sort_order;
 
 INSERT INTO products
-  (slug, name, tagline, description, price_cents, compare_at_cents, category_id, rating, review_count, stock, is_featured, sort_order)
+  (slug, name, tagline, description, price_cents, compare_at_cents, image_url, category_id, rating, review_count, stock, is_featured, sort_order)
 SELECT
   v.slug, v.name, v.tagline, v.description, v.price_cents, v.compare_at_cents,
+  '/products/' || v.slug || '.jpg',
   c.id, v.rating, v.review_count, v.stock, v.is_featured, v.sort_order
 FROM (VALUES
   ('aurora-wool-overcoat',  'Aurora Wool Overcoat',    'Italian double-faced wool',
@@ -83,6 +85,7 @@ ON CONFLICT (slug) DO UPDATE SET
   description       = EXCLUDED.description,
   price_cents       = EXCLUDED.price_cents,
   compare_at_cents  = EXCLUDED.compare_at_cents,
+  image_url         = EXCLUDED.image_url,
   category_id       = EXCLUDED.category_id,
   rating            = EXCLUDED.rating,
   review_count      = EXCLUDED.review_count,

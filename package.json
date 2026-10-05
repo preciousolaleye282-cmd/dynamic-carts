@@ -5,7 +5,7 @@
   "description": "Dynamic Carts - shop storefront, checkout, Google auth, Postgres persistence and Mailgun order confirmations.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run pwa:offline",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:schema": "node scripts/apply-schema.mjs",
@@ -13,7 +13,9 @@
     "db:setup": "node scripts/apply-schema.mjs && node scripts/seed.mjs",
     "db:clear-orders": "node scripts/clear-orders.mjs",
     "db:check": "node scripts/check-db.mjs",
-    "images": "node scripts/fetch-images.mjs"
+    "images": "node scripts/fetch-images.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "pwa:offline": "node scripts/build-sw.mjs"
   },
   "dependencies": {
     "next": "16.3.8",

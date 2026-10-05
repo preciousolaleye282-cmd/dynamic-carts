@@ -19,6 +19,24 @@ export function CartDrawer() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // The "Your cart" app shortcut launches `/?cart=open`, and a deep link to a
+  // product should reveal its cart too. Read the flag once on mount and strip it
+  // from the URL, so a refresh does not re-open a drawer the user has closed.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("cart") !== "open") return;
+    cart.open();
+    params.delete("cart");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+    // Mount-only by design; `cart.open` is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!cart.isOpen) return;
 

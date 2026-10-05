@@ -240,6 +240,162 @@ RETURNS TABLE (
 $$ LANGUAGE sql STABLE;
 
 -- ---------------------------------------------------------------------------
+-- product_variants
+--   Sizes and colours used to be derived from a hash of the slug, which is fine
+--   for decoration but useless for anything a shopper can filter on or reserve.
+--   Every product now has real rows: one per (colour, size) with its own stock.
+--   Backlog items 4, 7, 8 and 9 all depend on this being data, not a guess.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS product_variants (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  -- Title-cased ("Onyx"). Uniqueness is per product+colour+size.
+  colour      TEXT NOT NULL,
+  -- Hex used to paint the swatch, e.g. '#a9714b'.
+  colour_hex  TEXT NOT NULL,
+  size        TEXT NOT NULL,
+  stock       INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (product_id, colour, size)
+);
+
+CREATE INDEX IF NOT EXISTS product_variants_product_idx ON product_variants (product_id);
+CREATE INDEX IF NOT EXISTS product_variants_size_idx    ON product_variants (size);
+CREATE INDEX IF NOT EXISTS product_variants_colour_idx  ON product_variants (colour);
+
+-- ---------------------------------------------------------------------------
+-- newsletter_subscribers
+--   Email is the identity. `subscribed_at` is the timestamp the backlog asks us
+--   to store; `welcome_sent_at` records whether the 10%-off welcome mail
+--   actually went out, so a retry cannot double-send.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Stored lower-cased; the index is on lower(email) so "A@b.com" and
+  -- "a@b.com" are the same subscriber.
+  email           TEXT NOT NULL,
+  subscribed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  welcome_sent_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS newsletter_subscribers_email_idx
+  ON newsletter_subscribers (lower(email));
+
+-- ---------------------------------------------------------------------------
+-- promotions
+--   Server-configured sale windows. The countdown banner reads `ends_at` and
+--   nothing else, so the timer is always the server's truth. The page also
+--   receives `server_now` and measures drift against it, which means a device
+--   with a wrong clock still sees the correct remaining time.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS promotions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug          TEXT NOT NULL UNIQUE,
+  label         TEXT NOT NULL,
+  blurb         TEXT,
+  -- Percentage taken off discounted items, e.g. 30 = 30% off.
+  discount_pct  INTEGER NOT NULL CHECK (discount_pct BETWEEN 1 AND 90),
+  starts_at     TIMESTAMPTZ NOT NULL,
+  ends_at       TIMESTAMPTZ NOT NULL,
+  -- Only one flash sale is ever live; flipping this retires one.
+  active        BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ends_at > starts_at)
+);
+
+CREATE INDEX IF NOT EXISTS promotions_active_idx ON promotions (active, ends_at);
+
+-- ---------------------------------------------------------------------------
+-- wishlist_items
+--   The browser-local wishlist in src/lib/cart.tsx still works for guests; this
+--   table is what makes a signed-in shopper's list follow them to a new device.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS wishlist_items (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS wishlist_items_user_idx ON wishlist_items (user_id, created_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- Stock reservations
+--   Checkout holds stock for a few minutes so two shoppers cannot both pay for
+--   the last jacket. `expires_at` is authoritative: a reservation that has run
+--   out releases its stock, and the countdown on the checkout page counts down
+--   to this exact instant.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock_reservations (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Opaque token handed to the browser; it is the only handle a guest has.
+  token        TEXT NOT NULL UNIQUE,
+  -- NULL for a guest reservation: nothing to attach it to yet.
+  user_id      UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  email        TEXT,
+  expires_at   TIMESTAMPTZ NOT NULL,
+  -- Set when the hold is settled (order placed) or released, so stock is never
+  -- returned twice.
+  consumed_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS stock_reservations_expiry_idx ON stock_reservations (expires_at);
+
+-- What is being held, and how much of it to give back.
+CREATE TABLE IF NOT EXISTS stock_reservation_items (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reservation_id UUID NOT NULL REFERENCES stock_reservations(id) ON DELETE CASCADE,
+  product_id     UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity       INTEGER NOT NULL CHECK (quantity > 0),
+  UNIQUE (reservation_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS stock_reservation_items_reservation_idx
+  ON stock_reservation_items (reservation_id);
+
+-- ---------------------------------------------------------------------------
+-- Give held stock back once the hold has expired.
+--
+-- Stock is only deducted when checkout calls reserve_cart_for_checkout()
+-- (src/lib/reservations.ts), which writes the held quantity to
+-- stock_reservation_items. Releasing adds exactly that quantity back and marks
+-- the row consumed, so running this repeatedly is safe: an already-released
+-- reservation is skipped rather than credited twice.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION release_expired_reservations() RETURNS INTEGER AS $$
+DECLARE
+  released INTEGER := 0;
+  expired  RECORD;
+BEGIN
+  FOR expired IN
+    SELECT r.id
+      FROM stock_reservations r
+     WHERE r.consumed_at IS NULL
+       AND r.expires_at <= now()
+     FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    UPDATE products p
+       SET stock = p.stock + held.quantity
+      FROM stock_reservation_items held
+     WHERE held.reservation_id = expired.id
+       AND p.id = held.product_id;
+
+    UPDATE stock_reservations SET consumed_at = now() WHERE id = expired.id;
+    released := released + 1;
+  END LOOP;
+
+  -- Housekeeping: settled reservations no longer need their line items.
+  DELETE FROM stock_reservation_items WHERE reservation_id IN (
+    SELECT id FROM stock_reservations WHERE consumed_at IS NOT NULL
+  );
+
+  RETURN released;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+-- ---------------------------------------------------------------------------
 -- done
 -- ---------------------------------------------------------------------------
 

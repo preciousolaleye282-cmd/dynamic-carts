@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -279,6 +280,119 @@ export function CartProvider({
     };
   }, [signedIn, mirror]);
 
+  // ---------------------------------------------------------------------------
+  // Cross-device sync
+  //
+  // The reconcile above only runs once, on mount. That is not enough for the
+  // "add something on the web, see it on my phone" requirement: a phone left
+  // open on the shop would sit there with a stale cart until it was reloaded.
+  //
+  // So a signed-in client also polls. Two rules keep that safe:
+  //
+  //   1. Never clobber a local change. Every local mutation stamps
+  //      `localChangeAt`, and an incoming server snapshot is only applied if it
+  //      is newer than the last local edit. Otherwise a poll landing between a
+  //      tap and its optimistic update would silently undo the tap.
+  //
+  //   2. Pause when nobody is looking. Polling a hidden tab wastes the
+  //      phone's battery and data, so the interval stops on `visibilitychange`
+  //      and an immediate refresh happens on the way back in.
+  //
+  // Polling is deliberate over WebSockets or Supabase Realtime: this needs to
+  // work on the free Supabase tier and on a plain Postgres, and a cart is
+  // low-frequency. A long poll on the server would hold a database connection
+  // open per client, which the pooler cannot afford.
+  // ---------------------------------------------------------------------------
+
+  const localChangeAt = useRef(0);
+  /** Server snapshot we have already applied, so equal polls do no work. */
+  const lastServerSignature = useRef("");
+
+  const stampLocalChange = useCallback(() => {
+    localChangeAt.current = Date.now();
+  }, []);
+
+  /** Pull the server cart and adopt it, unless the shopper is mid-edit. */
+  const pullFromServer = useCallback(async () => {
+    if (!signedIn) return;
+    try {
+      const response = await fetch("/api/cart", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as { lines?: CartLine[] };
+      const lines = payload.lines ?? [];
+
+      // Sort so the signature is stable regardless of row order.
+      const signature = lines
+        .map((line) => `${line.product.id}:${line.quantity}`)
+        .sort()
+        .join("|");
+
+      if (signature === lastServerSignature.current) return;
+      // A local edit newer than the server snapshot wins; the next poll will
+      // pick up whatever the other device did once our change has been sent.
+      if (localChangeAt.current > Date.now() - 1000) return;
+
+      lastServerSignature.current = signature;
+      setItems(
+        lines.map((line) => ({
+          productId: line.product.id,
+          quantity: Math.min(line.quantity, MAX_PER_LINE),
+        })),
+      );
+      // Persisted by the effect above, since `ready` is already true.
+    } catch {
+      // Offline or a transient failure. Try again on the next tick.
+    }
+  }, [signedIn]);
+
+  // The polling interval, plus the events that should trigger an immediate
+  // refresh. `visible` gates the timer rather than merely clearing it, so a
+  // backgrounded tab does not keep waking up.
+  useEffect(() => {
+    if (!signedIn) return;
+
+    const POLL_MS = 8000;
+    let timer: number | undefined;
+
+    const start = () => {
+      if (timer !== undefined) return;
+      timer = window.setInterval(() => {
+        if (document.visibilityState === "visible") void pullFromServer();
+      }, POLL_MS);
+    };
+    const stop = () => {
+      if (timer === undefined) return;
+      window.clearInterval(timer);
+      timer = undefined;
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") {
+        stop();
+        return;
+      }
+      start();
+      // Coming back to the tab should feel instant, not wait for the next tick.
+      void pullFromServer();
+    };
+
+    // Back online after a tunnel drop or a lift in a lift: the cart may have
+    // moved on the other device while we were dark.
+    const onOnline = () => void pullFromServer();
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
+    if (document.visibilityState === "visible") start();
+
+    return () => {
+      stop();
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [signedIn, pullFromServer]);
+
   // Clear the "Added" flash after a moment.
   useEffect(() => {
     if (!justAdded) return;
@@ -301,11 +415,12 @@ export function CartProvider({
             )
           : [...current, { productId, quantity: Math.min(quantity, MAX_PER_LINE) }];
       });
+      stampLocalChange();
       mirror({ action: "add", productId, quantity });
       setJustAdded(productId);
       setIsOpen(true);
     },
-    [mirror],
+    [mirror, stampLocalChange],
   );
 
   const setQuantity = useCallback(
@@ -318,13 +433,14 @@ export function CartProvider({
               line.productId === productId ? { ...line, quantity: clamped } : line,
             ),
       );
+      stampLocalChange();
       mirror(
         clamped === 0
           ? { action: "remove", productId }
           : { action: "set", productId, quantity: clamped },
       );
     },
-    [mirror],
+    [mirror, stampLocalChange],
   );
 
   const remove = useCallback(
@@ -334,8 +450,9 @@ export function CartProvider({
 
   const clear = useCallback(() => {
     setItems([]);
+    stampLocalChange();
     mirror({ action: "clear" });
-  }, [mirror]);
+  }, [mirror, stampLocalChange]);
 
   // Anything the catalogue no longer sells, or that has sold out, is dropped
   // from the rendered cart rather than being shown and then rejected.
