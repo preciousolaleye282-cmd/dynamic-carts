@@ -1,0 +1,63 @@
+{
+  "packageId": "app.vercel.dynamic_carts.twa",
+  "host": "dynamic-carts.vercel.app",
+  "name": "Dynamic Carts",
+  "launcherName": "Dynamic Carts",
+  "display": "standalone",
+  "themeColor": "#0A0A0B",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#0A0A0B",
+  "enableNotifications": true,
+  "startUrl": "/?source=pwa",
+  "iconUrl": "https://dynamic-carts.vercel.app/icons/icon-512.png",
+  "maskableIconUrl": "https://dynamic-carts.vercel.app/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\dev\\dynamic-carts\\twa\\android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Your cart",
+      "shortName": "Cart",
+      "url": "https://dynamic-carts.vercel.app/?cart=open",
+      "chosenIconUrl": "https://dynamic-carts.vercel.app/icons/icon-192.png"
+    },
+    {
+      "name": "All products",
+      "shortName": "Shop",
+      "url": "https://dynamic-carts.vercel.app/search",
+      "chosenIconUrl": "https://dynamic-carts.vercel.app/icons/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://dynamic-carts.vercel.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://dynamic-carts.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "appVersion": "1"
+}
