@@ -20,6 +20,7 @@ type DemoProfile = Profile & { googleSub: string };
 type DemoStore = {
   profiles: Map<string, DemoProfile>;
   carts: Map<string, Map<string, number>>; // profileId -> productId -> quantity
+  wishlists: Map<string, Set<string>>; // profileId -> productId set
 };
 
 declare global {
@@ -28,7 +29,7 @@ declare global {
 
 function demoStore(): DemoStore {
   if (!globalThis.__dynamicCartsDemoStore) {
-    globalThis.__dynamicCartsDemoStore = { profiles: new Map(), carts: new Map() };
+    globalThis.__dynamicCartsDemoStore = { profiles: new Map(), carts: new Map(), wishlists: new Map() };
   }
   return globalThis.__dynamicCartsDemoStore;
 }
@@ -232,6 +233,55 @@ export async function clearCart(userId: string): Promise<void> {
     return;
   }
   await query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
+}
+
+// ---------------------------------------------------------------------------
+// Wishlist
+// ---------------------------------------------------------------------------
+
+export async function getWishlistIds(userId: string): Promise<string[]> {
+  if (!hasDatabase) {
+    return [...(demoStore().wishlists.get(userId) ?? new Set<string>())];
+  }
+  const rows = await query<{ product_id: string }>(
+    `SELECT product_id FROM wishlist_items WHERE user_id = $1`,
+    [userId],
+  );
+  return rows.map((row) => row.product_id);
+}
+
+/** Replace the server wishlist with exactly this set of product ids. */
+export async function setWishlistIds(userId: string, productIds: string[]): Promise<void> {
+  if (!hasDatabase) {
+    demoStore().wishlists.set(userId, new Set(productIds));
+    return;
+  }
+  if (productIds.length === 0) {
+    await query(`DELETE FROM wishlist_items WHERE user_id = $1`, [userId]);
+    return;
+  }
+  const placeholders = productIds.map((_, i) => `($1, $${i + 2})`).join(", ");
+  await query(
+    `DELETE FROM wishlist_items WHERE user_id = $1 AND product_id <> ALL ($2::uuid[])`,
+    [userId, productIds],
+  );
+  await query(
+    `INSERT INTO wishlist_items (user_id, product_id) VALUES ${placeholders}
+     ON CONFLICT DO NOTHING`,
+    [userId, ...productIds],
+  );
+}
+
+/**
+ * Fold a guest's localStorage wishlist into their account wishlist after
+ * sign-in. A wishlist is a set, so merging is a union - idempotent by nature.
+ */
+export async function mergeWishlist(userId: string, productIds: string[]): Promise<string[]> {
+  const current = new Set(await getWishlistIds(userId));
+  for (const id of productIds) current.add(id);
+  const merged = [...current];
+  await setWishlistIds(userId, merged);
+  return merged;
 }
 
 /**

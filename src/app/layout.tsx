@@ -95,7 +95,7 @@ export default async function RootLayout({
         <CartProvider catalogue={catalogue} signedIn={user !== null}>
           {/* Wishlist + recently viewed. Sits inside the cart provider because
               both resolve product ids against the same catalogue. */}
-          <ShopperProvider>
+          <ShopperProvider signedIn={user !== null}>
             {/* `useSearchParams` in the nav needs a boundary to render.
                 `googleAuth` is passed in because the nav is a client component
                 and cannot read server-only env vars itself - see the prop's

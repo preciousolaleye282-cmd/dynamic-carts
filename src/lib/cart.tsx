@@ -80,18 +80,26 @@ function readStored(): CartLineInput[] {
 }
 
 /**
- * Wishlist and "recently viewed".
+ * Wishlist (server-synced when signed in) and "recently viewed" (always local).
  *
- * Both are deliberately browser-local rather than server-side: a wishlist is a
- * short-lived shopping signal, not a durable record, and making it work without
- * an account is most of the value. Nothing here talks to the network, and both
- * stores are read lazily after mount so the server-rendered HTML never depends
- * on them (no hydration mismatch).
+ * The wishlist mirrors the cart's strategy: guests keep hearts in localStorage,
+ * and once somebody is signed in every toggle is mirrored to Postgres via
+ * `/api/wishlist`, folded in on sign-in with a union merge, and pulled back on
+ * an interval so a heart tapped on the web appears on the phone (and vice
+ * versa). Recently-viewed stays browser-local: it is a per-device signal, not
+ * something worth syncing.
+ *
+ * Both stores are read lazily after mount so the server-rendered HTML never
+ * depends on them (no hydration mismatch).
  */
 
 const WISHLIST_KEY = "dc_wishlist_v1";
 const RECENT_KEY = "dc_recent_v1";
 const RECENT_LIMIT = 8;
+/** How often a signed-in tab re-pulls the wishlist (matches the cart). */
+const WISHLIST_POLL_MS = 8000;
+/** Grace period after a local tap during which a poll must not overwrite it. */
+const WISHLIST_LOCAL_WRITE_GRACE_MS = 5000;
 
 type ShopperContextValue = {
   ready: boolean;
@@ -127,31 +135,160 @@ function writeStore(key: string, value: string[]): void {
   }
 }
 
-export function ShopperProvider({ children }: { children: React.ReactNode }) {
+export function ShopperProvider({
+  children,
+  signedIn,
+}: {
+  children: React.ReactNode;
+  signedIn: boolean;
+}) {
   const [ready, setReady] = useState(false);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
 
-  useEffect(() => {
-    setWishlist(readStore(WISHLIST_KEY));
-    setRecent(readStore(RECENT_KEY));
-    setReady(true);
-  }, []);
+  const localChangeAt = useRef(0);
+  const lastServerSignature = useRef("");
 
-  const toggleWishlist = useCallback((productId: string) => {
-    setWishlist((current) => {
-      const next = current.includes(productId)
-        ? current.filter((id) => id !== productId)
-        : [productId, ...current];
-      writeStore(WISHLIST_KEY, next);
-      return next;
+  /** Fire-and-forget mirror to the server. The UI never waits on this. */
+  const mirrorWishlist = useCallback((body: unknown) => {
+    void fetch("/api/wishlist", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => {
+      // Offline or signed out. localStorage remains the source of truth.
     });
   }, []);
+
+  const stampWishlistChange = useCallback(() => {
+    localChangeAt.current = Date.now();
+  }, []);
+
+  // First paint: load localStorage, then - if signed in - reconcile with the
+  // saved server wishlist (union merge, so nothing from either device is lost).
+  useEffect(() => {
+    const local = readStore(WISHLIST_KEY);
+    setWishlist(local);
+    setRecent(readStore(RECENT_KEY));
+    setReady(true);
+
+    if (!signedIn) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch("/api/wishlist", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const payload = (await response.json()) as { productIds?: string[] };
+        const server = payload.productIds ?? [];
+        if (cancelled) return;
+
+        const merged = [...new Set([...local, ...server])];
+        lastServerSignature.current = [...merged].sort().join("|");
+        setWishlist(merged);
+        writeStore(WISHLIST_KEY, merged);
+        // Push the union back so the server learns about guest hearts too.
+        if (merged.length > 0) {
+          mirrorWishlist({ action: "set", productIds: merged });
+        }
+      } catch {
+        // Keep the local wishlist; a failed sync must not block the shopper.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn, mirrorWishlist]);
+
+  /** Pull the server wishlist and adopt it, unless the shopper just tapped. */
+  const pullWishlist = useCallback(async () => {
+    if (!signedIn) return;
+    try {
+      const response = await fetch("/api/wishlist", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as { productIds?: string[] };
+      const server = [...new Set(payload.productIds ?? [])];
+
+      const signature = [...server].sort().join("|");
+      if (signature === lastServerSignature.current) return;
+      // A local tap newer than the snapshot wins; the next poll picks up the
+      // other device once our change has been sent.
+      if (localChangeAt.current > Date.now() - 1000) return;
+
+      lastServerSignature.current = signature;
+      setWishlist(server);
+      writeStore(WISHLIST_KEY, server);
+    } catch {
+      // Offline or transient failure. Try again on the next tick.
+    }
+  }, [signedIn]);
+
+  // Poll while signed in so a heart tapped on the web appears on the phone
+  // (and vice versa). Pauses when the tab is hidden to spare battery/data,
+  // and refreshes immediately on return, on focus, and on reconnect.
+  useEffect(() => {
+    if (!signedIn) return;
+
+    let timer: number | undefined;
+
+    const start = () => {
+      if (timer !== undefined) return;
+      timer = window.setInterval(() => {
+        if (document.visibilityState === "visible") void pullWishlist();
+      }, WISHLIST_POLL_MS);
+    };
+
+    const stop = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        start();
+        void pullWishlist();
+      } else {
+        stop();
+      }
+    };
+
+    start();
+    window.addEventListener("online", pullWishlist);
+    window.addEventListener("focus", pullWishlist);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      stop();
+      window.removeEventListener("online", pullWishlist);
+      window.removeEventListener("focus", pullWishlist);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [signedIn, pullWishlist]);
+
+  const toggleWishlist = useCallback(
+    (productId: string) => {
+      setWishlist((current) => {
+        const next = current.includes(productId)
+          ? current.filter((id) => id !== productId)
+          : [productId, ...current];
+        writeStore(WISHLIST_KEY, next);
+        return next;
+      });
+      stampWishlistChange();
+      mirrorWishlist({ action: "toggle", productId });
+    },
+    [mirrorWishlist, stampWishlistChange],
+  );
 
   const clearWishlist = useCallback(() => {
     setWishlist([]);
     writeStore(WISHLIST_KEY, []);
-  }, []);
+    stampWishlistChange();
+    mirrorWishlist({ action: "clear" });
+  }, [mirrorWishlist, stampWishlistChange]);
 
   const trackView = useCallback((productId: string) => {
     setRecent((current) => {

@@ -93,6 +93,29 @@ export const cartMutationSchema = z.discriminatedUnion("action", [
 
 export type CartMutation = z.infer<typeof cartMutationSchema>;
 
+// ---------------------------------------------------------------------------
+// Wishlist mutations (a set of product ids - order never matters)
+// ---------------------------------------------------------------------------
+
+export const wishlistMutationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("toggle"),
+    productId: z.string().uuid("Invalid product"),
+  }),
+  z.object({
+    action: z.literal("set"),
+    productIds: z.array(z.string().uuid("Invalid product")).max(200, "Too many items"),
+  }),
+  z.object({ action: z.literal("clear") }),
+  /** Merges a guest's localStorage wishlist into the account wishlist after sign-in. */
+  z.object({
+    action: z.literal("merge"),
+    productIds: z.array(z.string().uuid("Invalid product")).max(200, "Too many items").default([]),
+  }),
+]);
+
+export type WishlistMutation = z.infer<typeof wishlistMutationSchema>;
+
 /**
  * Flatten a ZodError into `{ "address.city": "City is required" }` so the form
  * can highlight the exact input that failed.
